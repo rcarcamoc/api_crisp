@@ -8,10 +8,14 @@ import time
 
 # --- CONFIGURACIÓN ---
 # Se recomienda usar variables de entorno para mayor seguridad.
-IDENTIFIER = os.environ.get("CRISP_IDENTIFIER", "73d66b40-d037-4689-adec-17111cef35b5")
-KEY = os.environ.get("CRISP_KEY", "faaea935eaa869ef5906ca67cd25f6751873871c48c5e0fe46848c4e6ac14306")
+IDENTIFIER = os.environ.get("CRISP_IDENTIFIER", "f8d35edb-3f36-460c-987e-aad777fb95ca")
+KEY = os.environ.get("CRISP_KEY", "175277f638dd4af55462ef572173e159517b49689c2d808e6589245ff431e726")
 WEBSITE_ID = os.environ.get("CRISP_WEBSITE_ID", "448e0792-3836-49a2-8631-72693b9487e0")
 BASE_URL = "https://api.crisp.chat/v1"
+
+# --- CONFIGURACIÓN DE BÚSQUEDA ---
+SEARCH_QUERY = os.environ.get("SEARCH_QUERY", "+56994549279")
+SEARCH_TYPE = os.environ.get("SEARCH_TYPE", "text") # text, segment, or filter
 
 # --- AUTENTICACIÓN ---
 auth_str = f"{IDENTIFIER}:{KEY}"
@@ -29,22 +33,41 @@ def get_iso_date(days_ago=0):
     dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
     return dt.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
 
-def fetch_conversations(start_date, end_date):
+def fetch_conversations(start_date=None, end_date=None):
     conversations = []
     page = 1
     while True:
         url = f"{BASE_URL}/website/{WEBSITE_ID}/conversations/{page}"
         params = {
-            "filter_date_start": start_date,
-            "filter_date_end": end_date
+            "per_page": 50,
+            "include_empty": 1
         }
+        if SEARCH_QUERY:
+            params["search_query"] = SEARCH_QUERY
+            params["search_type"] = SEARCH_TYPE
+
+        if start_date and end_date:
+            params["filter_date_start"] = start_date
+            params["filter_date_end"] = end_date
+
         print(f"Obteniendo conversaciones - Página {page}...")
         sys.stdout.flush()
-        try:
-            response = requests.get(url, headers=HEADERS, params=params, timeout=30)
-        except requests.exceptions.Timeout:
-            print(f"Timeout en página {page}")
-            break
+
+        backoff = 5
+        while True:
+            try:
+                response = requests.get(url, headers=HEADERS, params=params, timeout=30)
+                if response.status_code == 429:
+                    print(f"Rate limited. Esperando {backoff} segundos...")
+                    time.sleep(backoff)
+                    backoff *= 2
+                    if backoff > 60:
+                        return conversations
+                    continue
+                break
+            except requests.exceptions.Timeout:
+                print(f"Timeout en página {page}")
+                return conversations
 
         if response.status_code not in [200, 206]:
             print(f"Error fetching conversations: {response.status_code} - {response.text}")
@@ -57,9 +80,12 @@ def fetch_conversations(start_date, end_date):
             break
 
         conversations.extend(data)
+        if len(data) < 50:
+            break
+
         page += 1
         if page > 500: break
-        time.sleep(0.1)
+        time.sleep(0.5)
 
     return conversations
 
@@ -67,7 +93,10 @@ def fetch_meta(session_id):
     url = f"{BASE_URL}/website/{WEBSITE_ID}/conversation/{session_id}/meta"
     try:
         response = requests.get(url, headers=HEADERS, timeout=30)
-    except requests.exceptions.Timeout:
+        if response.status_code == 429:
+            time.sleep(5)
+            response = requests.get(url, headers=HEADERS, timeout=30)
+    except:
         return {}
     if response.status_code != 200:
         return {}
@@ -84,7 +113,10 @@ def fetch_messages(session_id):
 
         try:
             response = requests.get(url, headers=HEADERS, params=params, timeout=30)
-        except requests.exceptions.Timeout:
+            if response.status_code == 429:
+                time.sleep(5)
+                response = requests.get(url, headers=HEADERS, params=params, timeout=30)
+        except:
             break
         if response.status_code not in [200, 206]:
             break
@@ -98,9 +130,9 @@ def fetch_messages(session_id):
         if timestamp_before == earliest_ts:
             break
         timestamp_before = earliest_ts
-        if len(data) < 20:
+        if len(data) < 40:
             break
-        time.sleep(0.05)
+        time.sleep(0.3)
 
     return messages
 
@@ -151,7 +183,7 @@ def calculate_metrics(messages, state, updated_at_ts):
     # Resolution Time
     res_time = "Sin atención"
     if first_op_ts:
-        end_ts = updated_at_ts if state == "resolved" else last_op_ts
+        end_ts = updated_at_ts if state == "resolved" else (last_op_ts or updated_at_ts)
         res_time = round((end_ts - first_op_ts) / (1000 * 60), 2)
         if state != "resolved":
             res_time = f"{res_time} (En proceso)"
@@ -164,10 +196,16 @@ def format_timestamp(ts):
     return ""
 
 def main():
-    print("Iniciando script de reporte final...")
+    print(f"Iniciando script de reporte con búsqueda: '{SEARCH_QUERY}'...")
     sys.stdout.flush()
-    date_start = get_iso_date(7)
-    date_end = get_iso_date(0)
+
+    # Si hay query de búsqueda, intentamos traer todo sin filtro de fecha para asegurar completitud
+    if SEARCH_QUERY:
+        date_start = None
+        date_end = None
+    else:
+        date_start = get_iso_date(7)
+        date_end = get_iso_date(0)
 
     conversations = fetch_conversations(date_start, date_end)
     total_convs = len(conversations)
@@ -230,10 +268,11 @@ def main():
                 sid, format_timestamp(msg.get("timestamp")), content, msg.get("from"), msg.get("type")
             ])
 
-        if (i + 1) % 20 == 0:
-            time.sleep(0.5)
+        if (i + 1) % 10 == 0:
+            time.sleep(2)
 
     # Escribir CSV
+    suffix = "filtrado" if SEARCH_QUERY else "final"
     custom_cols = sorted([f"data_{k}" for k in all_custom_keys])
     fieldnames = [
         "session_id", "created_at", "updated_at", "state", "assigned_user_id",
@@ -242,7 +281,7 @@ def main():
         "resolution_time_minutes"
     ] + custom_cols
 
-    with open('reporte_conversaciones_final.csv', 'w', newline='', encoding='utf-8') as f:
+    with open(f'reporte_conversaciones_{suffix}.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for row in all_conversations_data:
@@ -250,12 +289,12 @@ def main():
                 if col not in row: row[col] = ""
             writer.writerow(row)
 
-    with open('reporte_mensajes_final.csv', 'w', newline='', encoding='utf-8') as f:
+    with open(f'reporte_mensajes_{suffix}.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(["session_id", "fecha", "mensaje", "de", "tipo"])
         writer.writerows(all_messages_data)
 
-    print(f"Finalizado. Reportes: reporte_conversaciones_final.csv y reporte_mensajes_final.csv")
+    print(f"Finalizado. Reportes generados: reporte_conversaciones_{suffix}.csv y reporte_mensajes_{suffix}.csv")
 
 if __name__ == "__main__":
     main()
