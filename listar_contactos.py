@@ -1,17 +1,25 @@
 from crisp_utils import (
-    get_crisp_client, get_website_id, export_to_csv, logger
+    get_website_id, export_to_csv, logger, BASE_URL, get_auth, get_headers
 )
 import time
+import requests
 
-def fetch_all_people(client, website_id):
-    """Descarga todos los perfiles de personas (contactos) paginando."""
+def fetch_all_people(website_id):
+    """Descarga todos los perfiles de personas (contactos) usando endpoint directo."""
     all_people = []
     page = 1
+    auth = get_auth()
+    headers = get_headers()
+
     while True:
         logger.info(f"Descargando contactos (People) - Página {page}...")
+        url = f"{BASE_URL}/website/{website_id}/people/profiles/{page}"
         try:
-            # Corregido: el método es get_people_profiles
-            people = client.website.get_people_profiles(website_id, page)
+            response = requests.get(url, auth=auth, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            people = data.get("data", [])
+
             if not people:
                 break
             all_people.extend(people)
@@ -24,11 +32,10 @@ def fetch_all_people(client, website_id):
 
 def main():
     try:
-        client = get_crisp_client()
         website_id = get_website_id()
 
         logger.info("Iniciando descarga de contactos (People)...")
-        people_list = fetch_all_people(client, website_id)
+        people_list = fetch_all_people(website_id)
 
         if not people_list:
             logger.info("No se encontraron contactos.")

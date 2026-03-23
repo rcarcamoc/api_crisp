@@ -2,9 +2,10 @@ import os
 import csv
 import time
 import logging
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
-from crisp_api import Crisp
+from requests.auth import HTTPBasicAuth
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -12,18 +13,23 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-def get_crisp_client():
-    """Inicializa y autentica el cliente de Crisp."""
+BASE_URL = "https://api.crisp.chat/v1"
+
+def get_auth():
+    """Obtiene el objeto de autenticación Basic para requests."""
     identifier = os.getenv("CRISP_IDENTIFIER")
     key = os.getenv("CRISP_KEY")
     if not identifier or not key:
         logger.error("Las variables de entorno CRISP_IDENTIFIER y CRISP_KEY no están configuradas.")
         raise ValueError("CRISP_IDENTIFIER and CRISP_KEY environment variables must be set")
+    return HTTPBasicAuth(identifier, key)
 
-    client = Crisp()
-    client.set_tier("plugin")
-    client.authenticate(identifier, key)
-    return client
+def get_headers():
+    """Obtiene las cabeceras necesarias para la API de Crisp."""
+    return {
+        "X-Crisp-Tier": "plugin",
+        "Content-Type": "application/json"
+    }
 
 def get_website_id():
     """Obtiene el website_id de las variables de entorno."""
@@ -71,17 +77,27 @@ def get_conversation_metadata(conv):
         "meta_subject": meta.get("subject", "")
     }
 
-def fetch_all_conversations(client, website_id):
-    """Descarga todas las conversaciones paginando automáticamente."""
+def fetch_all_conversations(website_id):
+    """Descarga todas las conversaciones usando el endpoint directamente."""
     all_conversations = []
     page = 1
+    auth = get_auth()
+    headers = get_headers()
+
     while True:
         logger.info(f"Descargando conversaciones - Página {page}...")
+        url = f"{BASE_URL}/website/{website_id}/conversations/{page}"
         try:
-            # Corregido: el método es get_conversations
-            conversations = client.website.get_conversations(website_id, page)
+            response = requests.get(url, auth=auth, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+
+            # La API de Crisp devuelve un objeto con {"error": false, "reason": "...", "data": [...]}
+            conversations = data.get("data", [])
+
             if not conversations:
                 break
+
             all_conversations.extend(conversations)
             page += 1
             time.sleep(0.1)
@@ -90,19 +106,24 @@ def fetch_all_conversations(client, website_id):
             break
     return all_conversations
 
-def fetch_messages_for_conversation(client, website_id, session_id):
+def fetch_messages_for_conversation(website_id, session_id):
     """Obtiene los mensajes de una conversación específica manejando paginación histórica."""
     all_messages = []
     timestamp_before = None
+    auth = get_auth()
+    headers = get_headers()
 
     try:
         while True:
-            # get_messages_in_conversation(website_id, session_id, timestamp_before=None)
-            # El SDK soporta pasar el timestamp para retroceder en el tiempo
+            url = f"{BASE_URL}/website/{website_id}/conversation/{session_id}/messages"
+            params = {}
             if timestamp_before:
-                messages = client.website.get_messages_in_conversation(website_id, session_id, timestamp_before)
-            else:
-                messages = client.website.get_messages_in_conversation(website_id, session_id)
+                params["timestamp_before"] = timestamp_before
+
+            response = requests.get(url, auth=auth, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            messages = data.get("data", [])
 
             if not messages:
                 break
@@ -114,12 +135,12 @@ def fetch_messages_for_conversation(client, website_id, session_id):
                 break
 
             # Usar el timestamp del mensaje más antiguo recibido para pedir los anteriores
+            # Los mensajes suelen venir del más nuevo al más viejo
             new_timestamp = messages[0].get("timestamp")
-            if new_timestamp == timestamp_before: # Evitar bucle infinito si la API devuelve lo mismo
+            if new_timestamp == timestamp_before:
                 break
             timestamp_before = new_timestamp
 
-        # Ordenar cronológicamente (la API los devuelve del más nuevo al más viejo por defecto al paginar)
         all_messages.sort(key=lambda x: x.get("timestamp", 0))
         return all_messages
     except Exception as e:
@@ -146,12 +167,16 @@ def run_with_workers(func, items, *args):
                 logger.error(f"Error procesando ítem {item}: {e}")
     return results
 
-def resolve_people_id(client, website_id, user_id_or_email):
-    """Resuelve un email a un people_id si es necesario."""
+def resolve_people_id(website_id, user_id_or_email):
+    """Resuelve un email a un people_id llamando al endpoint de perfil."""
     if "@" in user_id_or_email:
         try:
             logger.info(f"Resolviendo email {user_id_or_email} a people_id...")
-            profile = client.website.get_people_profile(website_id, user_id_or_email)
+            url = f"{BASE_URL}/website/{website_id}/people/profile/{user_id_or_email}"
+            response = requests.get(url, auth=get_auth(), headers=get_headers())
+            response.raise_for_status()
+            data = response.json()
+            profile = data.get("data", {})
             return profile.get("people_id")
         except Exception as e:
             logger.error(f"No se pudo encontrar el perfil para {user_id_or_email}: {e}")

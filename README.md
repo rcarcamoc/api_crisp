@@ -1,13 +1,13 @@
-# Scripts de Crisp API para Reportes
+# Scripts de Crisp API para Reportes (Basado en Endpoints)
 
-Este repositorio contiene tres scripts en Python para descargar y auditar información de Crisp (People, Sessions y Messages) en formato CSV.
+Este repositorio contiene scripts en Python para descargar y auditar información de Crisp (People, Sessions y Messages) en formato CSV, realizando llamadas directas a los endpoints de la API REST v1.
 
 ## Requisitos
 
 - Python 3.x
-- Instalar dependencias:
+- Instalar dependencias genéricas:
   ```bash
-  pip install crisp-api python-dotenv
+  pip install requests python-dotenv
   ```
 
 ## Configuración
@@ -53,7 +53,9 @@ python listar_conversaciones_usuario.py <user_id_o_email>
 ```
 **Resultado:** `conversaciones_usuario_<id>.csv`
 
-## Características
+## Características Técnicas
+- **Llamadas Directas:** Usa la librería `requests` para interactuar con `https://api.crisp.chat/v1`.
+- **Autenticación:** Basic Auth con cabecera `X-Crisp-Tier: plugin`.
 - **Paginación automática:** Recorre todos los registros disponibles en la API.
 - **Escape de CSV:** Los archivos CSV están configurados con `QUOTE_ALL` para asegurar que el contenido (especialmente los mensajes con saltos de línea) no rompa el formato.
-- **Concurrencia:** Usa `ThreadPoolExecutor` para acelerar la descarga de mensajes.
+- **Concurrencia:** Usa `ThreadPoolExecutor` para acelerar la descarga de mensajes de múltiples sesiones simultáneamente.

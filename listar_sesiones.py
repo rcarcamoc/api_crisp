@@ -1,15 +1,14 @@
 from crisp_utils import (
-    get_crisp_client, get_website_id, fetch_all_conversations,
+    get_website_id, fetch_all_conversations,
     get_conversation_metadata, export_to_csv, logger
 )
 
 def main():
     try:
-        client = get_crisp_client()
         website_id = get_website_id()
 
         logger.info("Iniciando descarga de todas las sesiones (conversaciones)...")
-        conversations = fetch_all_conversations(client, website_id)
+        conversations = fetch_all_conversations(website_id)
 
         if not conversations:
             logger.info("No se encontraron conversaciones.")

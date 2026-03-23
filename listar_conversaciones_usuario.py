@@ -1,18 +1,27 @@
 import sys
 from crisp_utils import (
-    get_crisp_client, get_website_id, get_conversation_metadata,
-    fetch_messages_for_conversation, export_to_csv, logger, resolve_people_id
+    get_website_id, get_conversation_metadata,
+    fetch_messages_for_conversation, export_to_csv, logger, resolve_people_id,
+    BASE_URL, get_auth, get_headers
 )
+import requests
 
-def fetch_user_conversations(client, website_id, people_id):
-    """Descarga todas las conversaciones vinculadas a un people_id."""
+def fetch_user_conversations(website_id, people_id):
+    """Descarga todas las conversaciones vinculadas a un people_id usando endpoint directo."""
     all_conversations = []
     page = 1
+    auth = get_auth()
+    headers = get_headers()
+
     while True:
         logger.info(f"Descargando conversaciones del usuario {people_id} - Página {page}...")
+        url = f"{BASE_URL}/website/{website_id}/people/conversations/{people_id}/list/{page}"
         try:
-            # Corregido: el método es get_people_conversations
-            session_ids = client.website.get_people_conversations(website_id, people_id, page)
+            response = requests.get(url, auth=auth, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            session_ids = data.get("data", [])
+
             if not session_ids:
                 break
             all_conversations.extend(session_ids)
@@ -30,17 +39,16 @@ def main():
     input_user = sys.argv[1]
 
     try:
-        client = get_crisp_client()
         website_id = get_website_id()
 
         # Resolver ID si se pasó un email
-        people_id = resolve_people_id(client, website_id, input_user)
+        people_id = resolve_people_id(website_id, input_user)
         if not people_id:
             logger.error(f"No se pudo resolver el identificador para: {input_user}")
             return
 
         logger.info(f"Buscando conversaciones para el people_id: {people_id}")
-        session_ids = fetch_user_conversations(client, website_id, people_id)
+        session_ids = fetch_user_conversations(website_id, people_id)
 
         if not session_ids:
             logger.info(f"No se encontraron conversaciones para el usuario {people_id}")
@@ -49,12 +57,19 @@ def main():
         logger.info(f"Se encontraron {len(session_ids)} conversaciones. Descargando mensajes...")
 
         all_rows = []
+        auth = get_auth()
+        headers = get_headers()
+
         for session_id in session_ids:
             try:
-                conv = client.website.get_conversation(website_id, session_id)
-                metadata = get_conversation_metadata(conv)
+                # Obtener la conversación para metadatos
+                url_conv = f"{BASE_URL}/website/{website_id}/conversation/{session_id}"
+                resp_conv = requests.get(url_conv, auth=auth, headers=headers)
+                resp_conv.raise_for_status()
+                conv = resp_conv.json().get("data", {})
 
-                messages = fetch_messages_for_conversation(client, website_id, session_id)
+                metadata = get_conversation_metadata(conv)
+                messages = fetch_messages_for_conversation(website_id, session_id)
 
                 if not messages:
                     row = metadata.copy()

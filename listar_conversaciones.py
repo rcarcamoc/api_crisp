@@ -1,16 +1,16 @@
 from crisp_utils import (
-    get_crisp_client, get_website_id, fetch_all_conversations,
+    get_website_id, fetch_all_conversations,
     get_conversation_metadata, fetch_messages_for_conversation,
     run_with_workers, export_to_csv, logger
 )
 
-def process_conversation_with_messages(conv, client, website_id):
+def process_conversation_with_messages(conv, website_id):
     """Función para el worker: obtiene metadatos y mensajes de una conversación."""
     session_id = conv.get("session_id")
     metadata = get_conversation_metadata(conv)
 
     # Obtener mensajes
-    messages = fetch_messages_for_conversation(client, website_id, session_id)
+    messages = fetch_messages_for_conversation(website_id, session_id)
 
     # Si no hay mensajes, devolvemos solo la entrada de metadatos con contenido vacío
     if not messages:
@@ -36,11 +36,10 @@ def process_conversation_with_messages(conv, client, website_id):
 
 def main():
     try:
-        client = get_crisp_client()
         website_id = get_website_id()
 
         logger.info("Obteniendo lista de conversaciones para auditoría completa...")
-        conversations = fetch_all_conversations(client, website_id)
+        conversations = fetch_all_conversations(website_id)
 
         if not conversations:
             logger.info("No hay conversaciones para procesar.")
@@ -49,7 +48,7 @@ def main():
         logger.info(f"Procesando {len(conversations)} conversaciones con mensajes...")
 
         # Usar workers para descargar mensajes en paralelo
-        all_rows = run_with_workers(process_conversation_with_messages, conversations, client, website_id)
+        all_rows = run_with_workers(process_conversation_with_messages, conversations, website_id)
 
         fieldnames = [
             "session_id", "people_id", "state", "created_at", "updated_at",
