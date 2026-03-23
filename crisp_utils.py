@@ -26,8 +26,9 @@ def get_auth():
 
 def get_headers():
     """Obtiene las cabeceras necesarias para la API de Crisp."""
+    tier = os.getenv("CRISP_TIER", "plugin")
     return {
-        "X-Crisp-Tier": "plugin",
+        "X-Crisp-Tier": tier,
         "Content-Type": "application/json"
     }
 
@@ -89,10 +90,13 @@ def fetch_all_conversations(website_id):
         url = f"{BASE_URL}/website/{website_id}/conversations/{page}"
         try:
             response = requests.get(url, auth=auth, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+            if response.status_code != 200:
+                error_info = response.json()
+                reason = error_info.get("reason", "No reason provided")
+                logger.error(f"Error {response.status_code} en página {page}: {reason}")
+                break
 
-            # La API de Crisp devuelve un objeto con {"error": false, "reason": "...", "data": [...]}
+            data = response.json()
             conversations = data.get("data", [])
 
             if not conversations:
@@ -102,7 +106,7 @@ def fetch_all_conversations(website_id):
             page += 1
             time.sleep(0.1)
         except Exception as e:
-            logger.error(f"Error al obtener conversaciones en página {page}: {e}")
+            logger.error(f"Error inesperado al obtener conversaciones en página {page}: {e}")
             break
     return all_conversations
 
@@ -121,7 +125,15 @@ def fetch_messages_for_conversation(website_id, session_id):
                 params["timestamp_before"] = timestamp_before
 
             response = requests.get(url, auth=auth, headers=headers, params=params)
-            response.raise_for_status()
+            if response.status_code != 200:
+                try:
+                    error_info = response.json()
+                    reason = error_info.get("reason", "No reason provided")
+                except:
+                    reason = response.text
+                logger.error(f"Error {response.status_code} al obtener mensajes: {reason}")
+                break
+
             data = response.json()
             messages = data.get("data", [])
 

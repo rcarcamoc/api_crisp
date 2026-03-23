@@ -16,7 +16,15 @@ def fetch_all_people(website_id):
         url = f"{BASE_URL}/website/{website_id}/people/profiles/{page}"
         try:
             response = requests.get(url, auth=auth, headers=headers)
-            response.raise_for_status()
+            if response.status_code != 200:
+                try:
+                    error_info = response.json()
+                    reason = error_info.get("reason", "No reason provided")
+                except:
+                    reason = response.text
+                logger.error(f"Error {response.status_code} en página {page}: {reason}")
+                break
+
             data = response.json()
             people = data.get("data", [])
 
@@ -26,7 +34,7 @@ def fetch_all_people(website_id):
             page += 1
             time.sleep(0.1)
         except Exception as e:
-            logger.error(f"Error al obtener contactos en página {page}: {e}")
+            logger.error(f"Error inesperado al obtener contactos en página {page}: {e}")
             break
     return all_people
 

@@ -18,7 +18,15 @@ def fetch_user_conversations(website_id, people_id):
         url = f"{BASE_URL}/website/{website_id}/people/conversations/{people_id}/list/{page}"
         try:
             response = requests.get(url, auth=auth, headers=headers)
-            response.raise_for_status()
+            if response.status_code != 200:
+                try:
+                    error_info = response.json()
+                    reason = error_info.get("reason", "No reason provided")
+                except:
+                    reason = response.text
+                logger.error(f"Error {response.status_code} al obtener conversaciones: {reason}")
+                break
+
             data = response.json()
             session_ids = data.get("data", [])
 
@@ -27,7 +35,7 @@ def fetch_user_conversations(website_id, people_id):
             all_conversations.extend(session_ids)
             page += 1
         except Exception as e:
-            logger.error(f"Error al obtener conversaciones del usuario: {e}")
+            logger.error(f"Error inesperado al obtener conversaciones del usuario: {e}")
             break
     return all_conversations
 

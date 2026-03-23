@@ -19,9 +19,17 @@ CRISP_IDENTIFIER="tu-identificador-de-plugin"
 CRISP_KEY="tu-clave-de-plugin"
 CRISP_WEBSITE_ID="tu-website-id"
 MAX_WORKERS=5
+CRISP_TIER="plugin"
 ```
 
 - `MAX_WORKERS`: Controla cuántas descargas de mensajes se realizan en paralelo (por defecto 5).
+- `CRISP_TIER`: Define el nivel del token. Usa `"plugin"` (por defecto) o `"user"`.
+
+### Notas sobre Permisos (Scopes)
+Si recibes un error **403 (Forbidden)**, asegúrate de que tu token tenga los siguientes permisos activados en el Panel de Crisp:
+- **Para Contactos:** `website:people:profiles`
+- **Para Sesiones:** `website:conversation:sessions`
+- **Para Mensajes:** `website:conversation:messages`
 
 ## Scripts Disponibles
 
