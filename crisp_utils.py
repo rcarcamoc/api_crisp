@@ -130,13 +130,13 @@ def fetch_messages_for_conversation(website_id, session_id):
 
             all_messages.extend(messages)
 
-            # Si hay menos de 40 mensajes (aprox), es probable que hayamos llegado al final
+            # Si hay menos de 30 mensajes, es probable que hayamos llegado al final (el límite por defecto suele ser 40)
             if len(messages) < 30:
                 break
 
-            # Usar el timestamp del mensaje más antiguo recibido para pedir los anteriores
-            # Los mensajes suelen venir del más nuevo al más viejo
-            new_timestamp = messages[0].get("timestamp")
+            # Usar el timestamp del mensaje más antiguo recibido (el último de la lista) para pedir los anteriores
+            # Los mensajes vienen del más nuevo al más viejo
+            new_timestamp = messages[-1].get("timestamp")
             if new_timestamp == timestamp_before:
                 break
             timestamp_before = new_timestamp

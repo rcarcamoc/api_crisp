@@ -56,25 +56,25 @@ def main():
 
         logger.info(f"Se encontraron {len(session_ids)} conversaciones. Descargando mensajes...")
 
-        all_rows = []
-        auth = get_auth()
-        headers = get_headers()
+        logger.info(f"Se encontraron {len(session_ids)} conversaciones. Procesando mensajes con hilos...")
 
-        for session_id in session_ids:
+        # Función auxiliar para procesar cada sesión en el worker
+        def process_session(session_id):
             try:
                 # Obtener la conversación para metadatos
                 url_conv = f"{BASE_URL}/website/{website_id}/conversation/{session_id}"
-                resp_conv = requests.get(url_conv, auth=auth, headers=headers)
+                resp_conv = requests.get(url_conv, auth=get_auth(), headers=get_headers())
                 resp_conv.raise_for_status()
                 conv = resp_conv.json().get("data", {})
 
                 metadata = get_conversation_metadata(conv)
                 messages = fetch_messages_for_conversation(website_id, session_id)
 
+                rows = []
                 if not messages:
                     row = metadata.copy()
                     row.update({"message_from": "", "message_content": "", "message_timestamp": "", "message_type": "", "message_fingerprint": ""})
-                    all_rows.append(row)
+                    rows.append(row)
                 else:
                     for msg in messages:
                         row = metadata.copy()
@@ -85,9 +85,15 @@ def main():
                             "message_type": msg.get("type", ""),
                             "message_fingerprint": msg.get("fingerprint", "")
                         })
-                        all_rows.append(row)
+                        rows.append(row)
+                return rows
             except Exception as e:
                 logger.error(f"Error procesando sesión {session_id}: {e}")
+                return []
+
+        # Usar workers para descargar mensajes en paralelo
+        from crisp_utils import run_with_workers
+        all_rows = run_with_workers(process_session, session_ids)
 
         fieldnames = [
             "session_id", "people_id", "state", "created_at", "updated_at",

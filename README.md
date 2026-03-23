@@ -39,12 +39,22 @@ python listar_sesiones.py
 ```
 **Resultado:** `sesiones.csv`
 
-### 2. Listar Conversaciones Completo (Auditoría)
+### 2. Listar Conversaciones Completo (Auditoría y Filtros)
 Descarga todas las conversaciones e incluye **todos los mensajes** de cada una. Utiliza el sistema de hilos para mayor velocidad.
+
+Para **filtrar por teléfono** o **ID de sesión**, abre el archivo `listar_conversaciones.py` y edita las variables al principio del archivo:
+
+```python
+# Ejemplo en listar_conversaciones.py:
+FILTER_PHONE = "56994549279"
+FILTER_SESSION_ID = ""
+```
+
+Luego ejecuta:
 ```bash
 python listar_conversaciones.py
 ```
-**Resultado:** `conversaciones_completo.csv`
+**Resultado:** `conversaciones_completo.csv` (o `conversaciones_filtrado.csv` si se usan filtros)
 
 ### 3. Listar Conversaciones de un Usuario
 Descarga el historial completo de conversaciones y mensajes de un usuario específico (`people_id` o email).
